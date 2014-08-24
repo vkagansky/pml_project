@@ -1,0 +1,163 @@
+```{r}
+#options(rpubs.upload.method = "internal")
+```
+
+# Predicting the manner how people exercise
+
+
+## Executive Summary
+
+The goal of this work is to develop a predictive model that would allow to estimate well the people do weight lifting exercises based on set of different activity monitors.  The data is vailable at https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv .  Anlother task was to make predictions for 2 sample acivities ( https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv ).
+
+For this task the predictive model based on the Random Forest algorithm was developed.  Due to the computational difficulties, the model was trained only on the 6% of the trining set (more that 1000 observ ation).  Even though, cross-validating model onthe remaining data (over 18,000 observations) gave 92% accuracy.  Preductions on the 20 given samples gave 90% accuracy (18 correct results)
+
+
+
+
+## Exploratory Analysis
+
+
+The data sets contain around 160 variables (acivitity monitors).  However just by looking at them we see that 100+ of these variables have no values for most of observations as well as for all 20 test cases (pml-testing data set) we are supposed to predict.  Evidently these variables will just create extra "noise" and are useless for prediction in our 20 cases.  So I decided to exclude them.
+
+As well I decided to exclude the new_window since it has value "no" for all records in the testing set. However, in this cade we also removed records with value "yes" from the consideration in the training set.
+
+Finally, I decided not to use for prediction few more variables that seem to be kept for the "housekeeping" purpose rather than have predictive value (like timestamps, subject name).
+
+Still after removing all these variables, there were around 50 predictors left.
+
+
+
+## Predictive Model 
+
+
+I decided to use the Randow Forest method that is proven to work well with large number of predictors.
+
+The origial plan was to split the training set (training-pml) into training and testing subsets with aroun 70% of observations kept into training set, train the model on the training set and cross validate on the test set (there is a naming confusion; this testing set is different from 20 samples provided in pms-testing.csv).
+
+
+However attempts to train the model on the 70% training set failed.  As was suggested in the Discussion Forum, I decided to use smaller training test sets.  I started with 1% and made several runs with larger sizes until 8%.   In all cases cases, there was perfect fit for the training set (eveidently just because it was small); the error rate for the testing/cross-validation set decreased with the size: 1% set gave 31% error rate, it decreared to 18% for 2% size, 11% for 4% size and to 8% for the 6% sample size.  
+
+
+Since the computation time to train the model substantially grew with the size of the training set and the training set already included over 1000 observations, I decided to stop at this point even though further increase of the test set size very likely would allow to increase accuracy.
+
+
+Applying the resulted model to 20 cases from pml-testing.csv gave 2 errors (90% accuracy) that is also consisted with 8% error rate (92% accuracy) estimated during cross-validation.
+
+
+
+Below is the R code:
+
+
+Read training set and subsetting on the new_window vsariable
+
+```{r}
+training.set <- read.csv(   "pml-training.csv" , header=TRUE, sep=","  )
+training.1 <- subset(training.set, new_window=="no")
+dim (training.1)
+
+```
+
+
+Selecting the variables we decide to keep
+
+```{r}
+nm <- c ("X", ## "user_name",  ## "num_window",	
+"roll_belt",	"pitch_belt",	"yaw_belt", "total_accel_belt",
+"gyros_belt_x",	"gyros_belt_y",	
+"gyros_belt_z",	"accel_belt_x",	"accel_belt_y",	
+"accel_belt_z",	"magnet_belt_x",	"magnet_belt_y",
+"magnet_belt_z",	"roll_arm",	"pitch_arm",	
+"yaw_arm",	"total_accel_arm",	
+"gyros_arm_x",	"gyros_arm_y",	"gyros_arm_z",	
+"accel_arm_x",	"accel_arm_y",	"accel_arm_z",	
+"magnet_arm_x",	"roll_dumbbell",	"pitch_dumbbell",
+"yaw_dumbbell",	"gyros_dumbbell_x",	"gyros_dumbbell_y",	
+"gyros_dumbbell_z",	"accel_dumbbell_x",	"accel_dumbbell_y",	
+"accel_dumbbell_z",	"magnet_dumbbell_x",	"magnet_dumbbell_y",	
+"magnet_dumbbell_z",	"roll_forearm",	"pitch_forearm",	
+"yaw_forearm",	"gyros_forearm_x",	"gyros_forearm_y",	
+"gyros_forearm_z",	"accel_forearm_x",	"accel_forearm_y",	
+"accel_forearm_z",	"magnet_forearm_x",	"magnet_forearm_y",	
+"magnet_forearm_z",	"classe")																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																
+
+
+
+col_list <- c(1)
+for (i in 2:length( names(training.1)) ) {
+if (names(training.1)[i] %in% nm)
+  { col_list <- append(col_list,i)
+ }
+}
+
+training.2 <- subset(training.1, select= col_list)  																																																																																																																																																																																																																																																																																																																																																																																																																																																																						
+
+dim(training.2)
+```
+
+
+
+Splitting data set 
+
+```{r}
+library(caret)
+library(kernlab)
+library(randomForest)
+
+set.seed(2833) 
+trainIndex = createDataPartition(y=training.2$classe, p = 0.06, list=FALSE)
+trainSet <- training.2[trainIndex,]
+testSet <- training.2[-trainIndex,]
+
+```
+
+
+Training model
+
+```{r}
+Sys.time()
+modFit <- train( classe~.-X,
+  method="rf", data=trainSet,
+  preProcess = c("center", "scale"), prox=TRUE,  importance=TRUE)
+Sys.time()
+```
+
+Estimations on the training set
+
+
+
+```{r}
+
+importance(modFit$finalModel)[,7]
+predictions <- predict (modFit, newdata=trainSet)
+sum(trainSet$classe != predictions)/length(trainSet$classe)
+
+```
+
+
+Cross validation on the test set
+
+```{r}
+predictions <- predict (modFit, newdata=testSet)
+sum(testSet$classe != predictions)/length(testSet$classe)
+```
+
+
+Predictions for the 20 cases from pml-testing,csv
+
+```{r}
+testing.set <- read.csv(   "pml-testing.csv" , header=TRUE, sep=","  )
+predictions <- predict (modFit, newdata=testing.set)
+
+```
+
+
+
+
+### Conclusion
+
+
+This model allows to predict the manner in which people did the exercise with pretty hight degree of accuracy (92%).  However, very likely the accuracy can be improved with using more computational resources.
+
+
+
+
